@@ -1,0 +1,164 @@
+import { VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component Clock inherits Window {
+    width: 255px; // 原来的 213px 放大 1/5
+    height: 255px; // 原来的 213px 放大 1/5
+    no-frame: true;
+    background: transparent;
+    always-on-top: true;
+    icon: @image-url("../resources/icon.ico");
+    
+    in property <string> current-time: "00:00:00";
+    in property <string> current-date: "2024-01-01";
+    in property <string> current-day: "Monday";
+    in property <string> current-weather: "- -";
+    in property <bool> loading: true; // 控制加载状态
+    
+    callback window-moved(/* delta_x */ length, /* delta_y */ length);
+    callback request-exit();
+    callback show-settings(); // 添加显示设置的回调
+    
+    // 主容器 - 苹果风格毛玻璃效果
+    main-container := Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 255px;
+        // 淡绿色背景
+        background: rgba(144, 238, 144, 0.8); // 淡绿色背景色
+        border-width: 1px;
+        border-color: rgba(255, 255, 255, 0.7); // 更亮的边框
+        visible: !root.loading; // 主内容在加载完成后显示
+        
+        // 内层毛玻璃效果
+        Rectangle {
+            width: 95%;
+            height: 95%;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            border-radius: 242px;
+            background: rgba(144, 238, 144, 0.2); // 淡绿色内层玻璃效果
+            border-width: 1px;
+            border-color: rgba(255, 255, 255, 0.3);
+            // 添加轻微的阴影效果
+            drop-shadow-blur: 10px;
+            drop-shadow-color: rgba(0, 0, 0, 0.1);
+            drop-shadow-offset-x: 0px;
+            drop-shadow-offset-y: 2px;
+        }
+        
+        // 时间显示区域 - 苹果风格
+        VerticalBox {
+            width: 80%;
+            height: 80%;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            alignment: center;
+            spacing: 11px; // 调整间距
+            
+            // 星期显示 - 苹果风格
+            Text {
+                text: current-day;
+                font-size: 19px; // 调整字体大小
+                font-weight: 300; // 细字重
+                color: rgba(60, 60, 67, 0.9); // 苹果深色文字
+                horizontal-alignment: center;
+            }
+            
+            // 主时间显示 - 苹果风格
+            Text {
+                text: current-time;
+                font-size: 37px; // 调整字体大小
+                font-weight: 300; // 细字重
+                color: rgba(28, 28, 30, 0.9); // 苹果黑色文字
+                horizontal-alignment: center;
+                letter-spacing: 2px; // 字间距
+            }
+            
+            // 日期显示 - 苹果风格
+            Text {
+                text: current-date;
+                font-size: 16px; // 调整字体大小
+                font-weight: 300; // 细字重
+                color: rgba(60, 60, 67, 0.9); // 苹果深色文字
+                horizontal-alignment: center;
+            }
+            
+            // 天气信息显示 - 分为两行
+            VerticalBox {
+                spacing: 5px;
+                alignment: center;
+                Text {
+                    text: root.current-weather;
+                    font-size: 16px; // 放大字体
+                    font-weight: 300;
+                    color: rgba(60, 60, 67, 0.9);
+                    horizontal-alignment: center;
+                }
+            }
+        }
+        
+
+    }
+
+    // 加载动画
+    loading-indicator := Rectangle {
+        width: 80px;
+            height: 80px;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        background: transparent; // 背景透明
+        visible: root.loading; // 加载时显示
+
+        // 简单的旋转动画 (Slint中实现复杂动画可能需要更多技巧或外部库)
+        // 这里用一个简单的旋转方块代替
+        // 临时的静态加载指示器 (移除了动画以确保编译)
+        loading_square := Rectangle {
+            width: 48px; // 增大尺寸
+            height: 48px; // 增大尺寸
+            background: rgba(135, 206, 235, 1.0); // 使用主题色，不透明
+            border-radius: 7px; // 添加圆角
+            border-width: 1px;
+            border-color: white;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            opacity: 1.0;
+        }
+    }
+    
+    // 使窗口可拖拽
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        
+        property <length> press-x;
+        property <length> press-y;
+        property <bool> is-dragging: false;
+        
+        pointer-event(event) => {
+            if (event.button == PointerEventButton.left) {
+                if (event.kind == PointerEventKind.down) {
+                    self.press-x = self.mouse-x;
+                    self.press-y = self.mouse-y;
+                    self.is-dragging = true;
+                } else if (event.kind == PointerEventKind.up) {
+                    self.is-dragging = false;
+                }
+            } else if (event.button == PointerEventButton.right) {
+                if (event.kind == PointerEventKind.up) { // 响应右键抬起
+                    // 不再直接退出，而是显示上下文菜单
+                    // request-exit();
+                }
+            }
+        }
+        
+
+        
+        moved => {
+            if (self.is-dragging) {
+                window-moved(self.mouse-x - self.press-x, self.mouse-y - self.press-y);
+            }
+        }
+        
+
+    }
+}
