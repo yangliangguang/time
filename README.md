@@ -1,6 +1,7 @@
 # 漂亮的无边框时钟
 <img width="259" height="258" alt="image" src="https://github.com/user-attachments/assets/74b771e5-e995-495c-a63a-32d2b840e929" />
 https://github.com/yangliangguang/time/releases
+
 一个使用 Rust 和 Slint 构建的现代化无边框桌面时钟应用。
 
 ## 特性
