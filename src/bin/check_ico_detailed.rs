@@ -15,7 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     println!("{} is a valid ICO file with {} entries", file_path, icon_dir.entries().len());
     for (i, entry) in icon_dir.entries().iter().enumerate() {
-        println!("  Entry {}: {}x{} @ {} bpp", i, entry.width(), entry.height(), entry.bit_count());
+        println!("  Entry {}: {}x{}", i, entry.width(), entry.height());
     }
     
     Ok(())

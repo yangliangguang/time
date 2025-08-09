@@ -253,9 +253,15 @@ async fn main() -> Result<(), slint::PlatformError> {
     menu.append(&MenuItem::new("退出", true, None)).map_err(|e| slint::PlatformError::from(e.to_string()))?;
     
     // 创建系统托盘图标
-    let icon = Icon::from_resource_name("icon.ico", None)
-        .unwrap_or(Icon::from_resource(1, None)
-        .unwrap_or(Icon::from_rgba(vec![0,0,0,0], 1, 1).unwrap()));
+    let icon_path = std::path::Path::new("resources/clock-icon.ico");
+    let icon = if icon_path.exists() {
+        Icon::from_path(icon_path, None)
+            .unwrap_or(Icon::from_rgba(vec![0,0,0,0], 1, 1).unwrap())
+    } else {
+        Icon::from_resource_name("icon.ico", None)
+            .unwrap_or(Icon::from_resource(1, None)
+            .unwrap_or(Icon::from_rgba(vec![0,0,0,0], 1, 1).unwrap()))
+    };
     
     let _tray_icon = Some(
         TrayIconBuilder::new()
