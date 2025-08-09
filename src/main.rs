@@ -2,10 +2,12 @@
 
 use slint::*;
 use std::time::Duration;
-use chrono::{Local, Datelike, Weekday};
+use chrono::{Local, Datelike, Weekday, Timelike};
 use reqwest;
 use tokio;
 use tokio::time::{interval, Duration as TokioDuration};
+
+// 移除了农历模块的引入
 #[cfg(target_os = "windows")]
 use std::ffi::OsStr;
 #[cfg(target_os = "windows")]
@@ -15,7 +17,7 @@ use std::fmt;
 
 // System tray imports
 use tao::event_loop::{EventLoopBuilder, ControlFlow};
-use tray_icon::{menu::{Menu, MenuItem, MenuEvent}, TrayIconBuilder, Icon, TrayIconEvent};
+use tray_icon::{menu::{Menu, MenuItem, MenuEvent, MenuId}, TrayIconBuilder, Icon, TrayIconEvent};
 use anyhow::Result;
 
 // Windows-specific imports
@@ -28,8 +30,8 @@ use windows::{
     core::{HRESULT, HSTRING},
     Win32::{
         Foundation::{ERROR_FILE_NOT_FOUND, HWND, S_OK, WIN32_ERROR},
-        System::Registry::{RegSetValueExW, RegDeleteValueW, RegCloseKey, HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_SZ, RegCreateKeyExW},
-        UI::WindowsAndMessaging::{SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOOLWINDOW},
+        System::Registry::{RegCreateKeyExW, RegSetValueExW, RegOpenKeyExW, RegCloseKey, RegDeleteValueW, HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ, REG_VALUE_TYPE},
+        UI::WindowsAndMessaging::{SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOOLWINDOW, ShowWindow, SW_MINIMIZE, SW_RESTORE},
     },
 };
 #[cfg(target_os = "windows")]
@@ -249,13 +251,34 @@ async fn main() -> Result<(), slint::PlatformError> {
     // 创建系统托盘事件循环
     let event_loop = EventLoopBuilder::new().build();
     let menu = Menu::new();
-    menu.append(&MenuItem::new("显示", true, None)).map_err(|e| slint::PlatformError::from(e.to_string()))?;
-    menu.append(&MenuItem::new("退出", true, None)).map_err(|e| slint::PlatformError::from(e.to_string()))?;
+    // 创建菜单项，使用指定的 ID
+    let show_item = MenuItem::with_id("show", "显示", true, None);
+    let hide_item = MenuItem::with_id("hide", "隐藏", true, None);
+    let exit_item = MenuItem::with_id("exit", "退出", true, None);
+    menu.append(&show_item).map_err(|e| slint::PlatformError::from(e.to_string()))?;
+    menu.append(&hide_item).map_err(|e| slint::PlatformError::from(e.to_string()))?;
+    menu.append(&exit_item).map_err(|e| slint::PlatformError::from(e.to_string()))?;
+    
+    // 获取菜单项的 ID 用于事件匹配
+    let show_id = show_item.id().clone();
+    let hide_id = hide_item.id().clone();
+    let exit_id = exit_item.id().clone();
+    // 调试日志：打印菜单项 ID
+    println!(
+        "Tray menu IDs => show={:?}, hide={:?}, exit={:?}",
+        show_id, hide_id, exit_id
+    );
     
     // 创建系统托盘图标
-    let icon = Icon::from_resource_name("icon.ico", None)
-        .unwrap_or(Icon::from_resource(1, None)
-        .unwrap_or(Icon::from_rgba(vec![0,0,0,0], 1, 1).unwrap()));
+    let icon_path = std::path::Path::new("resources/clock-icon.ico");
+    let icon = if icon_path.exists() {
+        Icon::from_path(icon_path, None)
+            .unwrap_or(Icon::from_rgba(vec![0,0,0,0], 1, 1).unwrap())
+    } else {
+        Icon::from_resource_name("icon.ico", None)
+            .unwrap_or(Icon::from_resource(1, None)
+            .unwrap_or(Icon::from_rgba(vec![0,0,0,0], 1, 1).unwrap()))
+    };
     
     let _tray_icon = Some(
         TrayIconBuilder::new()
@@ -307,6 +330,9 @@ async fn main() -> Result<(), slint::PlatformError> {
     ui.set_current_time(now.format("%H:%M:%S").to_string().into());
     ui.set_current_date(now.format("%Y年%m月%d日").to_string().into());
     ui.set_current_day(weekday_to_chinese(now.weekday()).into());
+    ui.set_is_am(now.hour() < 12);
+    
+    // 移除了农历日期的设置
     
     // 处理窗口拖拽
     let ui_weak = ui.as_weak();
@@ -338,6 +364,20 @@ async fn main() -> Result<(), slint::PlatformError> {
         }
     });
     
+    // 添加最小化窗口回调处理
+    let ui_handle_minimize = ui.as_weak();
+    ui.on_minimize_window(move || {
+        if let Some(ui) = ui_handle_minimize.upgrade() {
+            // 获取窗口句柄并最小化窗口
+            let window = ui.window();
+            if let Some(hwnd) = get_hwnd(&window) {
+                unsafe {
+                    ShowWindow(hwnd, SW_MINIMIZE);
+                }
+            }
+        }
+    });
+    
     // 克隆 UI 句柄用于定时器
     let ui_handle = ui.as_weak();
     let ui_handle_weather = ui.as_weak();
@@ -361,6 +401,15 @@ async fn main() -> Result<(), slint::PlatformError> {
         let date_str = now.format("%Y年%m月%d日").to_string();
         let day_str = weekday_to_chinese(now.weekday());
         
+        // 计算时针、分针和秒针的角度
+        let seconds = now.second() as f32;
+        let minutes = now.minute() as f32 + seconds / 60.0;
+        let hours = (now.hour() % 12) as f32 + minutes / 60.0;
+        
+        let second_angle = seconds * 6.0; // 360度/60秒 = 6度/秒
+        let minute_angle = minutes * 6.0; // 360度/60分钟 = 6度/分钟
+        let hour_angle = hours * 30.0;    // 360度/12小时 = 30度/小时
+        
         // 只有当时间确实发生变化时才更新UI
         if time_str != last_time || date_str != last_date || day_str != last_day {
             last_time = time_str.clone();
@@ -371,6 +420,14 @@ async fn main() -> Result<(), slint::PlatformError> {
             ui.set_current_time(time_str.into());
             ui.set_current_date(date_str.into());
             ui.set_current_day(day_str.into());
+            ui.set_is_am(now.hour() < 12);
+            
+            // 移除了农历日期的设置
+            
+            // 更新时钟指针角度
+            ui.set_hour_angle(hour_angle);
+            ui.set_minute_angle(minute_angle);
+            ui.set_second_angle(second_angle);
         }
     });
     
@@ -403,37 +460,95 @@ async fn main() -> Result<(), slint::PlatformError> {
     
     // 克隆 UI 句柄用于系统托盘事件处理
     let ui_handle_tray = ui.as_weak();
+    // 克隆菜单 ID 到异步任务中
+    let show_id_for_task = show_id.clone();
+    let hide_id_for_task = hide_id.clone();
+    let exit_id_for_task = exit_id.clone();
     
     // 在单独的任务中轮询系统托盘事件
     tokio::spawn(async move {
         loop {
             // 处理菜单事件
             if let Ok(event) = menu_channel.try_recv() {
-                match event.id().0.as_str() {
-                    "显示" => {
-                        // 使用 upgrade_in_event_loop 来避免 Send trait 问题
-                        let _ = ui_handle_tray.upgrade_in_event_loop(|ui| {
-                            ui.window().show().unwrap();
-                        });
-                    },
-                    "退出" => {
-                        // 使用 upgrade_in_event_loop 来避免 Send trait 问题
-                        let _ = ui_handle_tray.upgrade_in_event_loop(|ui| {
-                            ui.window().hide().unwrap();
-                        });
-                    },
-                    _ => {}
+                // 调试日志：打印收到的事件 ID
+                println!("Menu event received: id={:?}", event.id());
+                if *event.id() == show_id_for_task {
+                    println!("Matched: show");
+                    let ui_handle = ui_handle_tray.clone();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_handle.upgrade() {
+                            #[cfg(target_os = "windows")]
+                            {
+                                let window = ui.window();
+                                if let Some(hwnd) = get_hwnd(&window) {
+                                    unsafe {
+                                        ShowWindow(hwnd, SW_RESTORE);
+                                    }
+                                }
+                            }
+                            #[cfg(not(target_os = "windows"))]
+                            {
+                                // 非 Windows 平台暂时回退为显示
+                                ui.window().show().unwrap();
+                            }
+                        }
+                    });
+                } else if *event.id() == hide_id_for_task {
+                    println!("Matched: hide");
+                    let ui_handle = ui_handle_tray.clone();
+                    let _ = slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_handle.upgrade() {
+                            #[cfg(target_os = "windows")]
+                            {
+                                let window = ui.window();
+                                if let Some(hwnd) = get_hwnd(&window) {
+                                    unsafe {
+                                        ShowWindow(hwnd, SW_MINIMIZE);
+                                    }
+                                }
+                            }
+                            #[cfg(not(target_os = "windows"))]
+                            {
+                                // 非 Windows 平台暂时回退为隐藏
+                                ui.window().hide().unwrap();
+                            }
+                        }
+                    });
+                } else if *event.id() == exit_id_for_task {
+                    println!("Matched: exit");
+                    // 退出应用：退出 Slint 事件循环
+                    let _ = slint::invoke_from_event_loop(|| {
+                        let _ = slint::quit_event_loop();
+                    });
                 }
             }
             
             // 处理托盘图标事件
             if let Ok(event) = tray_channel.try_recv() {
-                // 匹配左键点击事件
-                if event.click_type == tray_icon::ClickType::Left {
-                    // 使用 upgrade_in_event_loop 来避免 Send trait 问题
-                    let _ = ui_handle_tray.upgrade_in_event_loop(|ui| {
-                        ui.window().show().unwrap();
-                    });
+                match event.click_type {
+                    // 左键点击显示窗口
+                    tray_icon::ClickType::Left => {
+                        let ui_handle = ui_handle_tray.clone();
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = ui_handle.upgrade() {
+                                ui.window().show().unwrap();
+                            }
+                        });
+                    },
+                    // 双击隐藏窗口（切换显示/隐藏）
+                    tray_icon::ClickType::Double => {
+                        let ui_handle = ui_handle_tray.clone();
+                        let _ = slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = ui_handle.upgrade() {
+                                if ui.window().is_visible() {
+                                    ui.window().hide().unwrap();
+                                } else {
+                                    ui.window().show().unwrap();
+                                }
+                            }
+                        });
+                    },
+                    _ => {}
                 }
             }
             

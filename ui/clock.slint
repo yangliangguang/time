@@ -1,28 +1,33 @@
 import { VerticalBox, HorizontalBox } from "std-widgets.slint";
 
 export component Clock inherits Window {
-    width: 255px; // 原来的 213px 放大 1/5
-    height: 255px; // 原来的 213px 放大 1/5
+    width: 408px; // 缩小1/5
+    height: 408px; // 缩小1/5
     no-frame: true;
     background: transparent;
     always-on-top: true;
-    icon: @image-url("../resources/icon.ico");
+    icon: @image-url("../resources/clock-icon.ico");
     
     in property <string> current-time: "00:00:00";
-    in property <string> current-date: "2024-01-01";
-    in property <string> current-day: "Monday";
-    in property <string> current-weather: "- -";
-    in property <bool> loading: true; // 控制加载状态
+in property <string> current-date: "2024-01-01";
+in property <string> current-day: "Monday";
+in property <string> current-weather: "- -";
+in property <bool> loading: true; // 控制加载状态
+in property <float> hour-angle: 0.0; // 时针角度
+in property <float> minute-angle: 0.0; // 分针角度
+in property <float> second-angle: 0.0; // 秒针角度
+in property <bool> is-am: true; // 上午或下午标识
     
     callback window-moved(/* delta_x */ length, /* delta_y */ length);
     callback request-exit();
     callback show-settings(); // 添加显示设置的回调
+    callback minimize-window(); // 添加最小化窗口的回调
     
     // 主容器 - 苹果风格毛玻璃效果
     main-container := Rectangle {
         width: 100%;
         height: 100%;
-        border-radius: 255px;
+        border-radius: 408px;
         // 淡绿色背景
         background: rgba(144, 238, 144, 0.8); // 淡绿色背景色
         border-width: 1px;
@@ -35,7 +40,7 @@ export component Clock inherits Window {
             height: 95%;
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
-            border-radius: 242px;
+            border-radius: 387px;
             background: rgba(144, 238, 144, 0.2); // 淡绿色内层玻璃效果
             border-width: 1px;
             border-color: rgba(255, 255, 255, 0.3);
@@ -46,19 +51,93 @@ export component Clock inherits Window {
             drop-shadow-offset-y: 2px;
         }
         
+        // 模拟时钟
+        Rectangle {
+            width: 320px;
+            height: 320px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: white;
+            border-radius: 80px;
+            border-width: 2px;
+            border-color: black;
+            
+            // 时针
+            Image {
+                width: 3px;
+                height: 60px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2 - 30px;
+                source: @image-url("../resources/hour_hand.svg");
+                rotation-angle: root.hour-angle * 1deg;
+                rotation-origin-x: 1.5px;
+                rotation-origin-y: 60px;
+            }
+            
+            // 分针
+            Image {
+                width: 2px;
+                height: 100px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2 - 50px;
+                source: @image-url("../resources/minute_hand.svg");
+                rotation-angle: root.minute-angle * 1deg;
+                rotation-origin-x: 1px;
+                rotation-origin-y: 100px;
+            }
+            
+            // 秒针
+            Image {
+                width: 2px;
+                height: 140px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2 - 70px;
+                source: @image-url("../resources/second_hand.svg");
+                rotation-angle: root.second-angle * 1deg;
+                rotation-origin-x: 1px;
+                rotation-origin-y: 140px;
+            }
+            
+            // 时钟刻度
+            for i in 12 : Text {
+                property <int> index: i;
+                text: root.is-am ? (index == 0 ? "12" : (index == 1 ? "1" : (index == 2 ? "2" : (index == 3 ? "3" : (index == 4 ? "4" : (index == 5 ? "5" : (index == 6 ? "6" : (index == 7 ? "7" : (index == 8 ? "8" : (index == 9 ? "9" : (index == 10 ? "10" : (index == 11 ? "11" : "12")))))))))))) : (index == 0 ? "12" : (index == 1 ? "13" : (index == 2 ? "14" : (index == 3 ? "15" : (index == 4 ? "16" : (index == 5 ? "17" : (index == 6 ? "18" : (index == 7 ? "19" : (index == 8 ? "20" : (index == 9 ? "21" : (index == 10 ? "22" : (index == 11 ? "23" : "24"))))))))))));
+                font-size: 16px;
+                x: (parent.width - self.width) / 2 + (parent.width / 2 - 24px) * Math.sin(index * 30deg);
+                y: (parent.height - self.height) / 2 - (parent.height / 2 - 24px) * Math.cos(index * 30deg);
+                rotation-angle: 0deg;
+                rotation-origin-x: self.width / 2;
+                rotation-origin-y: self.height / 2;
+                color: black;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                font-weight: 600;
+            }
+            
+            // 中心圆点
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                background: transparent;
+                border-radius: 10px;
+            }
+        }
+        
         // 时间显示区域 - 苹果风格
         VerticalBox {
-            width: 80%;
-            height: 80%;
+            width: 85%;
+            height: 85%;
             x: (parent.width - self.width) / 2;
             y: (parent.height - self.height) / 2;
             alignment: center;
-            spacing: 11px; // 调整间距
+            spacing: 16px; // 调整间距
             
             // 星期显示 - 苹果风格
             Text {
                 text: current-day;
-                font-size: 19px; // 调整字体大小
+                font-size: 22px; // 调整字体大小
                 font-weight: 300; // 细字重
                 color: rgba(60, 60, 67, 0.9); // 苹果深色文字
                 horizontal-alignment: center;
@@ -67,21 +146,23 @@ export component Clock inherits Window {
             // 主时间显示 - 苹果风格
             Text {
                 text: current-time;
-                font-size: 37px; // 调整字体大小
+                font-size: 44px; // 调整字体大小
                 font-weight: 300; // 细字重
                 color: rgba(28, 28, 30, 0.9); // 苹果黑色文字
                 horizontal-alignment: center;
-                letter-spacing: 2px; // 字间距
+                letter-spacing: 3px; // 字间距
             }
             
             // 日期显示 - 苹果风格
             Text {
                 text: current-date;
-                font-size: 16px; // 调整字体大小
+                font-size: 19px; // 调整字体大小
                 font-weight: 300; // 细字重
                 color: rgba(60, 60, 67, 0.9); // 苹果深色文字
                 horizontal-alignment: center;
             }
+            
+            // 移除了农历日期显示
             
             // 天气信息显示 - 分为两行
             VerticalBox {
@@ -89,7 +170,7 @@ export component Clock inherits Window {
                 alignment: center;
                 Text {
                     text: root.current-weather;
-                    font-size: 16px; // 放大字体
+                    font-size: 19px; // 放大字体
                     font-weight: 300;
                     color: rgba(60, 60, 67, 0.9);
                     horizontal-alignment: center;
@@ -133,6 +214,7 @@ export component Clock inherits Window {
         property <length> press-x;
         property <length> press-y;
         property <bool> is-dragging: false;
+        property <int> click-count: 0;
         
         pointer-event(event) => {
             if (event.button == PointerEventButton.left) {
@@ -140,6 +222,7 @@ export component Clock inherits Window {
                     self.press-x = self.mouse-x;
                     self.press-y = self.mouse-y;
                     self.is-dragging = true;
+                    self.click-count += 1;
                 } else if (event.kind == PointerEventKind.up) {
                     self.is-dragging = false;
                 }
@@ -151,14 +234,18 @@ export component Clock inherits Window {
             }
         }
         
-
+        clicked => {
+            if (self.click-count >= 2) {
+                // 双击事件
+                minimize-window();
+                self.click-count = 0;
+            }
+        }
         
         moved => {
             if (self.is-dragging) {
                 window-moved(self.mouse-x - self.press-x, self.mouse-y - self.press-y);
             }
         }
-        
-
     }
 }
